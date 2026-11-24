@@ -499,6 +499,14 @@ export const RECORD_SET_INSERT: Record<string, (db: Database.Database, pk: strin
     void db.prepare("INSERT INTO moni1000_coral_spots (record_id, source_id, fiscal_year, site_no, spot_no, spot_name_ja) VALUES (?,?,2010,1,1,?)").run(String(pk), source, name),
   documents: (db, pk, name, source) => void db.prepare("INSERT INTO documents (doc_id, title, publisher) VALUES (?,?,?)").run(pk, name, source),
   document_notes: (db, pk, name, source) => void db.prepare("INSERT INTO notes (note_id, doc_id, kind) VALUES (?,?,?)").run(pk, name, source),
+  // 定期刊行物。記事は号・文書の行が要る（FK）ので、無ければ足す
+  periodical_issues: (db, pk, name, source) =>
+    void db.prepare("INSERT INTO periodical_issues (issue_id, source_id, label_raw, kind, year_month) VALUES (?,?,?,'monthly','2024-12')").run(String(pk), source, name),
+  document_articles: (db, pk, name, source) => {
+    db.prepare("INSERT OR IGNORE INTO periodical_issues (issue_id, source_id, label_raw, kind, year_month) VALUES ('iss', ?, 'l', 'monthly', '2024-12')").run(source);
+    db.prepare("INSERT OR IGNORE INTO documents (doc_id, title) VALUES ('doc', 't')").run();
+    db.prepare("INSERT INTO document_articles (article_id, issue_id, doc_id, source_id, kind, title) VALUES (?, 'iss', 'doc', ?, 'article', ?)").run(String(pk), source, name);
+  },
   assessments: (db, pk, name, source) =>
     void db.prepare("INSERT INTO taxon_assessment (assessment_id, vernacular_name_ja_raw, source_id, list_id) VALUES (?,?,?,'rl')").run(pk, name, source),
 };

@@ -1,13 +1,18 @@
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, RECORD_SET_INSERT, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
 import { sourceAccess } from "@/lib/cube/source-meta";
-import { RECORD_SET_TABLES } from "@/lib/registry/generated-source";
+import { RECORD_SET_TABLES, SOURCE_ACCESS, type GeneratedSourceAccess } from "@/lib/registry/generated-source";
 import { TABLE_ORIGIN } from "@/lib/table-meta";
 import {
   blockingNotes,
   clampLimit,
   countRecordsBy,
+  INCLUDE_BODY_MAX_ROWS,
+  issueLabel,
+  PERIODICAL_SOURCE_LICENSE,
+  periodicalCitation,
+  pdfPageUrl,
   docNotes,
   documentsList,
   queryRecords,
@@ -46,6 +51,11 @@ describe("RECORD_TABLES（許可リスト）", () => {
     expect(d.cols).toContain(d.pk);
     if (!d.sourceless) expect(d.cols).toContain("source_id");
     expect(d.cols).not.toContain(d.geometry ?? "(none)");
+    const body = (def as { bodyCol?: string }).bodyCol;
+    if (body) {
+      expect(real.has(body), `${table}.${body}`).toBe(true);
+      expect(d.cols, "本文は一覧の既定の列に入れない").not.toContain(body);
+    }
     expect(new Set(d.cols).size).toBe(d.cols.length);
   });
 
@@ -62,7 +72,9 @@ describe("RECORD_TABLES（許可リスト）", () => {
   it("出典 × record_set の宣言（SOURCE_ACCESS）は許可リストの record_set だけを指し、record_set → 表の対応は access.yaml の 1 か所", () => {
     // 出典に紐付かない record_set（documents・document_notes）は access.yaml の対象外
     const sourced = Object.entries(RECORD_TABLES).filter(([, d]) => !("sourceless" in d)).map(([k]) => k);
-    expect(Object.keys(RECORD_SET_TABLES).sort()).toEqual(sourced.sort());
+    // 定期刊行物の 2 つは access.yaml の宣言（出典 tatsugo_koho_amami）が入るまで生成物に無い。再生成（pnpm run build:registry:ts）後は filter が空になる
+    const notYetGenerated = ["periodical_issues", "document_articles"].filter((k) => !(k in RECORD_SET_TABLES));
+    expect(Object.keys(RECORD_SET_TABLES).sort()).toEqual(sourced.filter((k) => !notYetGenerated.includes(k)).sort());
     for (const s of RECORD_SOURCE_IDS) {
       const sets = recordSetsOf(s);
       expect(sets.length, s).toBeGreaterThan(0);
@@ -382,5 +394,167 @@ describe("countRecordsBy / range（地図・物語用）", () => {
     await expect(readRecordSet(db, "hazard_zones", { range: [{ col: "area_m2", min: 0, max: 1 }], order: [{ col: "zone_id" }] })).rejects.toThrow();
     await expect(readRecordSet(db, "hazard_zones", { range: [{ col: "centroid_lat", min: Number.NaN, max: 1 }], order: [{ col: "zone_id" }] })).rejects.toThrow();
     await expect(readRecordSet(db, "vegetation", { range: [{ col: "centroid_lat", min: 0, max: 1 }], order: [{ col: "feature_id" }] })).rejects.toThrow();
+  });
+});
+
+describe("定期刊行物（periodical_issues・document_articles）", () => {
+  const SRC = "tatsugo_koho_amami";
+  const injected: string[] = [];
+  // 生成物（generated-source.ts）の再生成前は出典 tatsugo_koho_amami が無い。統合後の再生成で SOURCE_ACCESS に入れば、この注入は何もしない
+  beforeAll(() => {
+    if (SOURCE_ACCESS[SRC]) return;
+    (SOURCE_ACCESS as Record<string, GeneratedSourceAccess>)[SRC] = {
+      state: "queryable", queryableVia: ["get_records"], tables: ["periodical_issues", "document_articles"],
+      recordSetRows: { periodical_issues: 3, document_articles: 4 }, nSourceRows: 7, nSourceRowsBasis: "source_rows", countedAt: null,
+      reason: null, reasonJa: null, reasonNote: null, docIds: [],
+    };
+    (RECORD_SOURCE_IDS as string[]).push(SRC);
+    injected.push(SRC);
+  });
+  afterAll(() => {
+    for (const id of injected) {
+      delete (SOURCE_ACCESS as Record<string, unknown>)[id];
+      (RECORD_SOURCE_IDS as string[]).splice((RECORD_SOURCE_IDS as string[]).indexOf(id), 1);
+    }
+  });
+
+  const BODY1 = "秋名の川で外来種のカダヤシが見つかりました。駆除にご協力ください。";
+  function seedPeriodical() {
+    raw.prepare("INSERT INTO periodical_series (series_id, source_id, title, publisher) VALUES ('tatsugo_koho', ?, '広報たつごう', '龍郷町')").run(SRC);
+    const iss = raw.prepare("INSERT INTO periodical_issues (issue_id, series_id, source_id, kind, year_month, year_month_to, fiscal_year, label_raw, n_files) VALUES (?,?,?,?,?,?,?,?,?)");
+    iss.run("tatsugo_koho_202412", "tatsugo_koho", SRC, "monthly", "2024-12", null, 2024, "広報たつごう 2024年12月号", 2);
+    iss.run("tatsugo_koho_201904", "tatsugo_koho", SRC, "monthly", "2019-04", "2019-05", 2019, "広報たつごう 2019年4・5月合併号", 1);
+    iss.run("tatsugo_koho_201502s", "tatsugo_koho", SRC, "supplement", "2015-02", null, 2014, "別冊", 1);
+    const doc = raw.prepare("INSERT INTO documents (doc_id, title, url) VALUES (?,?,?)");
+    doc.run("tatsugo_koho_202412_p1", "広報たつごう 2024年12月号（その1）", "https://example.test/koho_202412_1.pdf");
+    doc.run("tatsugo_koho_202412_p2", "広報たつごう 2024年12月号（その2）", "https://example.test/koho_202412_2.pdf");
+    doc.run("tatsugo_koho_201904", "広報たつごう 2019年4・5月合併号", "https://example.test/koho_201904.pdf");
+    const f = raw.prepare("INSERT INTO periodical_issue_files (doc_id, issue_id, part_no, page_offset, download_url) VALUES (?,?,?,?,?)");
+    f.run("tatsugo_koho_202412_p1", "tatsugo_koho_202412", 1, 0, "https://example.test/koho_202412_1.pdf");
+    f.run("tatsugo_koho_202412_p2", "tatsugo_koho_202412", 2, 24, "https://example.test/koho_202412_2.pdf");
+    f.run("tatsugo_koho_201904", "tatsugo_koho_201904", 1, 0, "https://example.test/koho_201904.pdf");
+    const art = raw.prepare(
+      "INSERT INTO document_articles (article_id, issue_id, doc_id, source_id, kind, page_from, page_to, issue_page_from, issue_page_to, title, body_text, event_dates, extractor, confidence) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    );
+    art.run("a1", "tatsugo_koho_202412", "tatsugo_koho_202412_p2", SRC, "article", 3, 3, 27, 27, "外来種を見かけたら", BODY1, '[{"raw":"令和6年12月1日","iso":"2024-12-01"}]', "rule:v1", 0.8);
+    art.run("a2", "tatsugo_koho_202412", "tatsugo_koho_202412_p2", SRC, "article", 4, 5, 28, 29, "二ページの記事", "本文その2", null, "rule:v1", 0.9);
+    art.run("a3", "tatsugo_koho_201904", "tatsugo_koho_201904", SRC, "article", 2, 2, 2, 2, "合併号の記事", "本文その3", null, "rule:v1", 0.9);
+    art.run("a4", "tatsugo_koho_202412", "tatsugo_koho_202412_p1", SRC, "unsegmented", 1, 1, 1, 1, null, null, null, "rule:v1", 0.1);
+    raw.prepare("INSERT INTO document_article_topics (article_id, topic_id, extractor, confidence) VALUES ('a1','wildlife_alien','rule:v1',0.8),('a1','river_water','rule:v1',0.6),('a2','tourism','rule:v1',0.7)").run();
+    raw.prepare("INSERT INTO document_article_places (article_id, place_raw, place_type, place_id, match_method, confidence) VALUES ('a1','秋名','settlement',NULL,NULL,0.9),('a1','龍郷湾','coast','p:bay','exact_name',1)").run();
+  }
+
+  it("record_set だけで出典が決まる（出典 1 つ）。別の出典を付けると入力エラー。号の一覧は files（PDF の URL）と n_articles を持つ", async () => {
+    seedPeriodical();
+    const r = await q({ record_set: "periodical_issues" });
+    expect(r.source_id).toBe(SRC);
+    expect(ids(r, "issue_id")).toEqual(["tatsugo_koho_201502s", "tatsugo_koho_201904", "tatsugo_koho_202412"]);
+    expect(r.n_total).toBe(3);
+    const dec = r.rows.find((x) => x.issue_id === "tatsugo_koho_202412")!;
+    expect(dec.n_articles).toBe(2); // kind='article' だけ（unsegmented を数えない）
+    expect(dec.files).toEqual([
+      { doc_id: "tatsugo_koho_202412_p1", part_no: 1, page_offset: 0, pdf_url: "https://example.test/koho_202412_1.pdf" },
+      { doc_id: "tatsugo_koho_202412_p2", part_no: 2, page_offset: 24, pdf_url: "https://example.test/koho_202412_2.pdf" },
+    ]);
+    expect(dec.citation).toBe("龍郷町「広報たつごう」2024年12月号");
+    expect(r.rows.find((x) => x.issue_id === "tatsugo_koho_201904")!.citation).toBe("龍郷町「広報たつごう」2019年4・5月合併号");
+    expect(r.rows.find((x) => x.issue_id === "tatsugo_koho_201502s")!.citation).toBe("龍郷町「広報たつごう」2015年2月 別冊");
+    await expect(q({ record_set: "periodical_issues", source_id: "dams_kanagawa" })).rejects.toThrow(RecordsInputError);
+  });
+
+  it("号の絞り込み: year（暦年）・fiscal_year・issue（issue_id か YYYY-MM）。n_total は絞ると null", async () => {
+    seedPeriodical();
+    expect(ids(await q({ record_set: "periodical_issues", year: 2019 }), "issue_id")).toEqual(["tatsugo_koho_201904"]);
+    expect(ids(await q({ record_set: "periodical_issues", fiscal_year: 2014 }), "issue_id")).toEqual(["tatsugo_koho_201502s"]);
+    expect(ids(await q({ record_set: "periodical_issues", year: 2015, fiscal_year: 2019 }), "issue_id")).toEqual([]); // AND
+    expect(ids(await q({ record_set: "periodical_issues", issue: "2024-12" }), "issue_id")).toEqual(["tatsugo_koho_202412"]);
+    expect(ids(await q({ record_set: "periodical_issues", issue: "tatsugo_koho_201904" }), "issue_id")).toEqual(["tatsugo_koho_201904"]);
+    expect((await q({ record_set: "periodical_issues", year: 2019 })).n_total).toBeNull();
+    await expect(q({ record_set: "periodical_issues", topic: "tourism" })).rejects.toThrow(RecordsInputError);
+    await expect(q({ record_set: "periodical_issues", include_body: true })).rejects.toThrow(RecordsInputError);
+  });
+
+  it("記事の一覧は本文を返さず has_body・body_chars だけ。citation（号内通しページ）・pdf_url（ファイル内ページ）・source_license を必ず付け、内部列は出さない", async () => {
+    seedPeriodical();
+    const r = await q({ record_set: "document_articles", issue: "2024-12" });
+    expect(ids(r, "article_id")).toEqual(["a1", "a2", "a4"]);
+    for (const row of r.rows) {
+      expect(row).not.toHaveProperty("body_text");
+      expect(row).not.toHaveProperty("doc_url");
+      expect(row.source_license).toBe(PERIODICAL_SOURCE_LICENSE);
+    }
+    const [a1, a2, a4] = r.rows;
+    expect(a1).toMatchObject({ has_body: 1, body_chars: [...BODY1].length, year_month: "2024-12", fiscal_year: 2024 });
+    expect(a1.citation).toBe("龍郷町「広報たつごう」2024年12月号 p.27");
+    expect(a1.pdf_url).toBe("https://example.test/koho_202412_2.pdf#page=3");
+    expect(a2.citation).toBe("龍郷町「広報たつごう」2024年12月号 p.28–29");
+    expect(a2.pdf_url).toBe("https://example.test/koho_202412_2.pdf#page=4");
+    expect(a4).toMatchObject({ has_body: 0, body_chars: null });
+    expect(a1.event_dates).toEqual([{ raw: "令和6年12月1日", iso: "2024-12-01" }]);
+    expect(a1.topics).toEqual([
+      { topic_id: "river_water", confidence: 0.6, extractor: "rule:v1" },
+      { topic_id: "wildlife_alien", confidence: 0.8, extractor: "rule:v1" },
+    ]);
+    expect(a1.places).toEqual([
+      { place_raw: "秋名", place_type: "settlement", place_id: null, match_method: null, confidence: 0.9, extractor: "rule:v1" },
+      { place_raw: "龍郷湾", place_type: "coast", place_id: "p:bay", match_method: "exact_name", confidence: 1, extractor: "rule:v1" },
+    ]);
+    expect(a4.topics).toEqual([]);
+    expect((await q({ record_set: "document_articles", issue: "tatsugo_koho_201904" })).rows[0].citation).toBe("龍郷町「広報たつごう」2019年4・5月合併号 p.2");
+  });
+
+  it("topic・place_id・year・fiscal_year で絞る（バインドは数個。EXISTS）", async () => {
+    seedPeriodical();
+    expect(ids(await q({ record_set: "document_articles", topic: "wildlife_alien" }), "article_id")).toEqual(["a1"]);
+    expect(ids(await q({ record_set: "document_articles", topic: "tourism", fiscal_year: 2024 }), "article_id")).toEqual(["a2"]);
+    expect(ids(await q({ record_set: "document_articles", topic: "tourism", fiscal_year: 2019 }), "article_id")).toEqual([]);
+    expect(ids(await q({ record_set: "document_articles", place_id: "p:bay" }), "article_id")).toEqual(["a1"]);
+    expect(ids(await q({ record_set: "document_articles", year: 2019 }), "article_id")).toEqual(["a3"]);
+    expect(ids(await q({ record_set: "document_articles", doc_id: "tatsugo_koho_202412_p1" }), "article_id")).toEqual(["a4"]);
+  });
+
+  it("本文: include_body=true か id 指定の 1 件だけ全文を返す。q は見出しと本文に効き、一致箇所の前後を match_snippet に返す（本文は返さない）", async () => {
+    seedPeriodical();
+    const one = await q({ record_set: "document_articles", id: "a1" });
+    expect(one.rows[0].body_text).toBe(BODY1);
+    expect(one.rows[0].citation).toBeTruthy();
+    const withBody = await q({ record_set: "document_articles", issue: "2024-12", include_body: true });
+    expect(withBody.rows.map((x) => x.body_text)).toEqual([BODY1, "本文その2", null]);
+    expect(withBody.limit).toBe(INCLUDE_BODY_MAX_ROWS); // limit 省略は 20 件
+    const hit = await q({ record_set: "document_articles", q: "カダヤシ" });
+    expect(ids(hit, "article_id")).toEqual(["a1"]);
+    expect(hit.rows[0]).not.toHaveProperty("body_text");
+    expect(hit.rows[0].match_snippet).toBe(BODY1); // 前後 40 字に全体が収まる
+    expect(ids(await q({ record_set: "document_articles", q: "合併号の記事" }), "article_id")).toEqual(["a3"]); // 見出しにも効く
+    expect((await q({ record_set: "document_articles", q: "合併号の記事" })).rows[0].match_snippet).toBeNull();
+    await expect(q({ record_set: "document_articles", include_body: true, limit: INCLUDE_BODY_MAX_ROWS + 1 })).rejects.toThrow(RecordsInputError);
+  });
+
+  it("長い本文の抜粋は前後各 40 字だけ", async () => {
+    seedPeriodical();
+    raw.prepare("UPDATE document_articles SET body_text = ? WHERE article_id = 'a2'").run("あ".repeat(100) + "カダヤシ" + "い".repeat(100));
+    const r = await q({ record_set: "document_articles", q: "カダヤシ" });
+    expect(r.rows.find((x) => x.article_id === "a2")!.match_snippet).toBe("あ".repeat(40) + "カダヤシ" + "い".repeat(40));
+  });
+
+  it("入力の検査: 新しい入力は他の record_set では入力エラー。zod は範囲外・型違いを拒む", async () => {
+    await expect(q({ record_set: "document_cells", fiscal_year: 2024 })).rejects.toThrow(RecordsInputError);
+    await expect(q({ source_id: "dams_kanagawa", topic: "tourism" })).rejects.toThrow(RecordsInputError);
+    await expect(q({ source_id: "dams_kanagawa", include_body: true })).rejects.toThrow(RecordsInputError);
+    expect(recordsInputSchema.safeParse({ record_set: "document_articles", fiscal_year: 2024, topic: "tourism", include_body: true }).success).toBe(true);
+    expect(recordsInputSchema.safeParse({ record_set: "document_articles", year: "2024" }).success).toBe(false);
+    expect(recordsInputSchema.strict().safeParse({ record_set: "document_articles", cursor: "x" }).success).toBe(false);
+  });
+
+  it("citation・pdf_url の関数: 月刊・合併号・別冊・年またぎ・ページ範囲・年月が読めない", () => {
+    expect(issueLabel({ kind: "monthly", year_month: "2024-04" })).toBe("2024年4月号");
+    expect(issueLabel({ kind: "monthly", year_month: "2019-12", year_month_to: "2020-01" })).toBe("2019年12月・2020年1月合併号");
+    expect(issueLabel({ kind: "supplement", year_month: "2015-02" })).toBe("2015年2月 別冊");
+    expect(issueLabel({ kind: "monthly", year_month: null })).toBeNull();
+    expect(periodicalCitation({ kind: "monthly", year_month: "2024-04", page_from: 3, page_to: 3 })).toBe("龍郷町「広報たつごう」2024年4月号 p.3");
+    expect(periodicalCitation({ publisher: "X町", title: "広報X", kind: "monthly", year_month: "2024-04", page_from: 3, page_to: 5 })).toBe("X町「広報X」2024年4月号 p.3–5");
+    expect(periodicalCitation({ kind: "monthly", year_month: "bad" })).toBeNull();
+    expect(pdfPageUrl("https://a/b.pdf", 7)).toBe("https://a/b.pdf#page=7");
+    expect(pdfPageUrl(null, 7)).toBeNull();
   });
 });

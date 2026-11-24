@@ -56,6 +56,9 @@ export const TABLE_ORIGIN: Record<string, string> = {
   water_zone_assignment: "main", water_zone_source_share: "main",
   // cells.sqlite 由来
   cells: "c", documents: "c", notes: "c",
+  // 定期刊行物（広報たつごう。scripts/m13_tatsugo_koho.py、docs/plans/TATSUGO_KOHO.md）。get_records の periodical_issues / document_articles
+  periodical_series: "c", periodical_issues: "c", periodical_issue_files: "c",
+  document_articles: "c", document_article_topics: "c", document_article_places: "c",
   // v2.sqlite 由来（Issue #48）。観測キューブ・生物キューブと、その事前集計
   observation_agg: "v2", occurrence_agg: "v2",
   summary_variable_catalog: "v2", summary_place_variable: "v2",
@@ -79,6 +82,14 @@ export const TABLE_META: Record<string, string> = {
   documents: "抽出元の行政文書（PDF）",
   cells: "行政文書の表のセル。行キー・列キー・年度・出典ページつき",
   notes: "表に付随する注記。時系列比較を阻害する注記のフラグを含む",
+  periodical_series: "定期刊行物の系列（広報たつごう）。ライセンスと合意の原文を持つ",
+  periodical_issues: "定期刊行物の号（月刊・別冊）。年月・年度・主な記事の見出し原文つき",
+  periodical_issue_files: "号を構成する PDF ファイル（分割された号は複数）。号内通しページの起点 page_offset つき",
+  document_articles:
+    "定期刊行物の記事。本文の全文つき（読めないものは body_text が NULL で unreadable_reason に理由）。" +
+    "ページはファイル内ページ（page_from/to）と号内通しページ（issue_page_from/to。出典の p.○ に使う）",
+  document_article_topics: "記事の話題（語彙は registry/article_topic.yaml）。機械が付けた推定で、抽出器・確度つき",
+  document_article_places: "記事に出た地名の原文。place_id は place 表と名称が完全一致で 1 件に決まるときだけ",
   protected_areas:
     "保護区・緑地・保存樹木の指定台帳。自然公園／特別緑地保全地区／近郊緑地保全区域／" +
     "歴史的風土保存地区／風致地区／都市公園／保存樹木を category_code で束ねている。" +
