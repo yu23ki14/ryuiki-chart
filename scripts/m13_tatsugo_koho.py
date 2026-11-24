@@ -24,7 +24,7 @@
 
 検査（失敗したら止まる。設計書 §8.1）: 件数（176 号・180 ファイル。`--allow-partial` で外す）・月の欠け・分割の part 番号・
 ページ範囲・全ページの被覆・話題の語彙・`kind='article'` の話題 1 件以上・article_id の衝突（同一記事の重複は通し番号 `x2` で区別）・本文 64KB 以下・
-令和 2 年度以降の「主な記事」見出しとの突合（8 割以上。閾値は仮置き）。
+令和 2 年度以降の「主な記事」見出しとの突合（読めないページの無い号で、本文のどこかに見つかる割合が 95% 以上）。
 """
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ RAW_SUBDIR = "data/raw/tatsugo_koho/pdf"
 # 2026-11 時点の件数（2012-04〜2026-11。月刊 175＋別冊 1、PDF 180）。号が増えたらこの 2 つを直す。
 EXPECTED_ISSUES = 176
 EXPECTED_FILES = 180
-HEADLINE_THRESHOLD = 0.8
+HEADLINE_THRESHOLD = 0.95  # 見出しが本文のどこかに見つかる割合（題の一致率ではない。読めないページのある号で見つからないものは分母から除く）
 MAX_BODY_BYTES = 64 * 1024  # D1 の 1 文の SQL サイズ（100KB）に収める
 
 LICENSE_TEXT = (
@@ -349,21 +349,37 @@ def check_coverage(files: list[dict], articles: list[dict]) -> None:
                        + "; ".join(f"{d} {g[:10]}{'…' if len(g) > 10 else ''}" for d, g in sorted(bad.items())[:10]))
 
 
-def headline_check(issues: list[dict], articles: list[dict]) -> tuple[int, int, list[tuple[str, str]]]:
-    """令和 2 年度以降の「主な記事」見出しが、その号の記事の title/body に見つかるか。-> (見つかった数, 全数, 見つからない(号, 見出し))。"""
-    hay: dict[str, str] = {}
+UNREADABLE_REASONS = ("scanned_no_ocr", "garbled_font_encoding", "no_text_layer")
+
+
+def headline_check(issues: list[dict], articles: list[dict]) -> dict:
+    """令和 2 年度以降の「主な記事」見出し（HTML）と、抽出した記事の突合（`tatsugo_segment.reconcile_issue` と同じ分類）。
+
+    見出しが本文のどこかに見つかった数（題の一致＋本文中にある＋言い換え）を、全見出しから「読めないページ
+    （スキャン・文字化け）のある号で見つからなかったもの（missed_unreadable。OCR で読める可能性）」を除いた数で割る
+    （`found`/`total`）。題の一致率（`title_matched`）は報告するだけ。
+    -> {"found", "total", "title_matched", "classes"（分類ごとの数）, "missing"（(号, 見出し, 分類)。読めない理由の無い取りこぼし）}"""
+    import tatsugo_segment as seg  # 標準ライブラリだけ（CI に追加の依存は無い）
+    by_issue: dict[str, list[dict]] = {}
     for a in articles:
-        hay[a["issue_id"]] = hay.get(a["issue_id"], "") + norm(a["title"]) + "\n" + norm(a["body_text"]) + "\n"
-    found = total = 0
-    missing: list[tuple[str, str]] = []
+        by_issue.setdefault(a["issue_id"], []).append(a)
+    classes = {"matched": 0, "in_text_only": 0, "paraphrase": 0, "missed_unreadable": 0, "missed": 0}
+    n_headlines = 0
+    missing: list[tuple[str, str, str]] = []
     for i in issues:
-        for h in json.loads(i["headlines"]) if i["headlines"] else []:
-            total += 1
-            if norm(h) and norm(h) in hay.get(i["issue_id"], ""):
-                found += 1
-            else:
-                missing.append((i["issue_id"], h))
-    return found, total, missing
+        hl = json.loads(i["headlines"]) if i["headlines"] else []
+        if not hl:
+            continue
+        arts = by_issue.get(i["issue_id"], [])
+        unread = sum(1 for a in arts if a["unreadable_reason"] in UNREADABLE_REASONS)
+        r = seg.reconcile_issue(hl, arts, unread)
+        n_headlines += r["headlines"]
+        for k in classes:
+            classes[k] += len(r[k])
+        missing += [(i["issue_id"], h, "missed") for h in r["missed"]]
+    found = classes["matched"] + classes["in_text_only"] + classes["paraphrase"]
+    return {"found": found, "total": n_headlines - classes["missed_unreadable"], "title_matched": classes["matched"],
+            "classes": classes, "missing": missing}
 
 
 # ---------------------------------------------------------------------------
@@ -489,11 +505,11 @@ def finish_model(docs, issues, links, files, articles_in, topic_ids, withdrawals
         check_issue_continuity(issues)
     articles, topics, places = build_articles(articles_in, files, topic_ids, place_ids)
     check_coverage(files, articles)
-    found, total, missing = headline_check(issues, articles)
-    if total and found / total < headline_threshold:
-        raise M13Error(f"主な記事の見出しの突合が閾値未満: {found}/{total}（閾値 {headline_threshold}）。見つからない例: {missing[:5]}")
+    hc = headline_check(issues, articles)
+    if hc["total"] and hc["found"] / hc["total"] < headline_threshold:
+        raise M13Error(f"主な記事の見出しの突合が閾値未満: {hc['found']}/{hc['total']}（閾値 {headline_threshold}）。見つからない例: {hc['missing'][:5]}")
     model = dict(docs=docs, issues=issues, links=links, articles=articles, topics=topics, places=places,
-                 headline_check={"found": found, "total": total, "missing": missing})
+                 headline_check=hc)
     return apply_withdrawals(model, withdrawals)
 
 
@@ -575,8 +591,9 @@ def report(model: dict, diff: dict | None) -> None:
           f"{sum(i['kind'] == 'supplement' for i in model['issues'])}）・ファイル {len(model['links'])}・"
           f"記事 {len(model['articles'])}・話題 {len(model['topics'])}・地名 {len(model['places'])}")
     if hc["total"]:
-        print(f"主な記事の見出し: {hc['found']}/{hc['total']} が記事に見つかった（見つからない {len(hc['missing'])} 件）")
-        for issue, h in hc["missing"][:10]:
+        print(f"主な記事の見出し（読めないために見つからないものを除く）: 本文に見つかった {hc['found']}/{hc['total']}"
+              f"（{hc['found'] / hc['total']:.1%}。題の一致 {hc['title_matched']}）。分類（全号）: {hc['classes']}")
+        for issue, h, _c in hc["missing"][:10]:
             print(f"  - {issue}: {h}")
     if model.get("withdrawn") and (model["withdrawn"]["issues"] or model["withdrawn"]["articles"]):
         print(f"取り下げ: 号 {model['withdrawn']['issues']}・記事 {len(model['withdrawn']['articles'])} 件を外した")
@@ -592,7 +609,6 @@ def main(argv=None) -> None:
     ap.add_argument("--withdrawn", type=pathlib.Path, default=DEFAULT_WITHDRAWN)
     ap.add_argument("--registry-db", help="place_id の実在を検査する registry.sqlite（省略時は検査しない）")
     ap.add_argument("--allow-partial", action="store_true", help="件数（176 号・180 ファイル）と月の欠けを検査しない（サンプル・テスト用）")
-    ap.add_argument("--headline-threshold", type=float, default=HEADLINE_THRESHOLD)
     ap.add_argument("--no-register", action="store_true", help="source_registry に登録しない")
     ap.add_argument("--dry-run", action="store_true", help="検査と件数だけ。何も書かない")
     a = ap.parse_args(argv)
@@ -602,7 +618,7 @@ def main(argv=None) -> None:
         rc = sqlite3.connect(f"file:{a.registry_db}?mode=ro", uri=True)
         place_ids = {r[0] for r in rc.execute("SELECT place_id FROM place")}
         rc.close()
-    kw = dict(allow_partial=a.allow_partial, place_ids=place_ids, headline_threshold=a.headline_threshold)
+    kw = dict(allow_partial=a.allow_partial, place_ids=place_ids, headline_threshold=HEADLINE_THRESHOLD)
     articles_in = read_jsonl(a.processed_dir / "articles.jsonl")
     if (a.processed_dir / "issues.jsonl").exists():  # c106 extract の出力（既定）
         docs, issues, links, files = from_extract(read_jsonl(a.processed_dir / "issues.jsonl"), read_jsonl(a.processed_dir / "files.jsonl"),

@@ -187,16 +187,25 @@ def test_coverage_requires_every_page(catalog):
     build(catalog, fixed)
 
 
-def test_headline_check_threshold(catalog):
+def test_headline_check_uses_text_anywhere_and_excludes_unreadable_misses(catalog):
     arts = arts_for(catalog)
     arts.append(art("tatsugo_koho_202611", 1, title="相撲大会", topics=("tourism",)))
-    m = build(catalog, arts)
-    assert (m["headline_check"]["found"], m["headline_check"]["total"]) == (1, 2)
-    assert m["headline_check"]["missing"] == [("tatsugo_koho_202611", "川の清掃")]
+    kw = dict(headline_threshold=m13.HEADLINE_THRESHOLD)
     with pytest.raises(m13.M13Error, match="閾値"):
-        build(catalog, arts, headline_threshold=0.8)
-    arts.append(art("tatsugo_koho_202611", 2, title="川 の 清掃", topics=("conservation_clean",)))  # NFKC・空白除去で一致
-    build(catalog, arts, headline_threshold=0.8)
+        build(catalog, arts, **kw)  # 川の清掃 がどこにも無い（1/2）
+    m = build(catalog, arts, headline_threshold=0.0)
+    hc = m["headline_check"]
+    assert (hc["found"], hc["total"], hc["title_matched"]) == (1, 2, 1)
+    assert hc["missing"] == [("tatsugo_koho_202611", "川の清掃", "missed")]
+    # 題が無くても本文のどこかに見出しの文字列があれば見つかった扱い（題の一致率ではなく本文での発見率で止める）
+    arts.append(art("tatsugo_koho_202611", 2, title="別の題", body="先日、川の清掃が行われました。", topics=("conservation_clean",)))
+    hc = build(catalog, arts, **kw)["headline_check"]
+    assert (hc["found"], hc["total"], hc["title_matched"]) == (2, 2, 1)
+    # 読めないページのある号で見つからない見出しは分母から除く（OCR で読める可能性。止めない）
+    arts2 = [a for a in arts_for(catalog) if a["doc_id"] != "tatsugo_koho_202611"] + [
+        art("tatsugo_koho_202611", 1, 2, title=None, body=None, unreadable_reason="scanned_no_ocr", kind="unsegmented")]
+    hc = build(catalog, arts2, **kw)["headline_check"]
+    assert hc["total"] == 0 and hc["classes"]["missed_unreadable"] == 2 and hc["missing"] == []
 
 
 # ---------------------------------------------------------------- 取り下げ
@@ -282,17 +291,18 @@ def test_write_refuses_when_tatsugo_doc_has_cells(cells, catalog):
 def test_main_end_to_end_on_a_copy(tmp_path, cells, catalog, capsys):
     proc = tmp_path / "proc"
     proc.mkdir()
+    catalog = [{**r, "headlines": []} for r in catalog]  # 見出しの突合は専用のテストで見る
     (proc / "catalog.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in catalog), encoding="utf-8")
     (proc / "articles.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in arts_for(catalog)), encoding="utf-8")
     path = cells.execute("PRAGMA database_list").fetchone()[2]
     cells.close()
-    m13.main(["--processed-dir", str(proc), "--cells", path, "--allow-partial", "--headline-threshold", "0"])
+    m13.main(["--processed-dir", str(proc), "--cells", path, "--allow-partial"])
     out = capsys.readouterr().out
     assert "号 5（月刊 4・別冊 1）・ファイル 6" in out
     c = sqlite3.connect(path)
     assert c.execute("SELECT count(*) FROM document_articles WHERE source_id = ?", (m13.SOURCE_ID,)).fetchone()[0] == 14
     c.close()
-    m13.main(["--processed-dir", str(proc), "--dry-run", "--allow-partial", "--headline-threshold", "0"])
+    m13.main(["--processed-dir", str(proc), "--dry-run", "--allow-partial"])
 
 
 # ---------------------------------------------------------------- 語彙・DDL
@@ -313,3 +323,10 @@ def test_ddl_matches_documented_columns():
     for t in ("periodical_issues", "document_articles"):
         assert "source_id" in cols(t)  # get_records の既定の絞り列
     assert {t for t in rcommon.source_id_tables(c)} == {"periodical_series", "periodical_issues", "document_articles"}
+
+
+def test_get_records_description_lists_every_topic_id():
+    """get_records の topic 入力の説明（web/src/lib/records.ts）は語彙を直書きする（describe_catalog に topics は無い）。語彙の追加で食い違わない。"""
+    src = (m13.ROOT / "web" / "src" / "lib" / "records.ts").read_text(encoding="utf-8")
+    missing = [t for t in TOPICS if t not in src]
+    assert not missing, missing

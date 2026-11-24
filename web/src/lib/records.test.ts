@@ -1,8 +1,8 @@
 import Database from "better-sqlite3";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, RECORD_SET_INSERT, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
 import { sourceAccess } from "@/lib/cube/source-meta";
-import { RECORD_SET_TABLES, SOURCE_ACCESS, type GeneratedSourceAccess } from "@/lib/registry/generated-source";
+import { RECORD_SET_TABLES } from "@/lib/registry/generated-source";
 import { TABLE_ORIGIN } from "@/lib/table-meta";
 import {
   blockingNotes,
@@ -72,9 +72,7 @@ describe("RECORD_TABLES（許可リスト）", () => {
   it("出典 × record_set の宣言（SOURCE_ACCESS）は許可リストの record_set だけを指し、record_set → 表の対応は access.yaml の 1 か所", () => {
     // 出典に紐付かない record_set（documents・document_notes）は access.yaml の対象外
     const sourced = Object.entries(RECORD_TABLES).filter(([, d]) => !("sourceless" in d)).map(([k]) => k);
-    // 定期刊行物の 2 つは access.yaml の宣言（出典 tatsugo_koho_amami）が入るまで生成物に無い。再生成（pnpm run build:registry:ts）後は filter が空になる
-    const notYetGenerated = ["periodical_issues", "document_articles"].filter((k) => !(k in RECORD_SET_TABLES));
-    expect(Object.keys(RECORD_SET_TABLES).sort()).toEqual(sourced.filter((k) => !notYetGenerated.includes(k)).sort());
+    expect(Object.keys(RECORD_SET_TABLES).sort()).toEqual(sourced.sort());
     for (const s of RECORD_SOURCE_IDS) {
       const sets = recordSetsOf(s);
       expect(sets.length, s).toBeGreaterThan(0);
@@ -399,24 +397,6 @@ describe("countRecordsBy / range（地図・物語用）", () => {
 
 describe("定期刊行物（periodical_issues・document_articles）", () => {
   const SRC = "tatsugo_koho_amami";
-  const injected: string[] = [];
-  // 生成物（generated-source.ts）の再生成前は出典 tatsugo_koho_amami が無い。統合後の再生成で SOURCE_ACCESS に入れば、この注入は何もしない
-  beforeAll(() => {
-    if (SOURCE_ACCESS[SRC]) return;
-    (SOURCE_ACCESS as Record<string, GeneratedSourceAccess>)[SRC] = {
-      state: "queryable", queryableVia: ["get_records"], tables: ["periodical_issues", "document_articles"],
-      recordSetRows: { periodical_issues: 3, document_articles: 4 }, nSourceRows: 7, nSourceRowsBasis: "source_rows", countedAt: null,
-      reason: null, reasonJa: null, reasonNote: null, docIds: [],
-    };
-    (RECORD_SOURCE_IDS as string[]).push(SRC);
-    injected.push(SRC);
-  });
-  afterAll(() => {
-    for (const id of injected) {
-      delete (SOURCE_ACCESS as Record<string, unknown>)[id];
-      (RECORD_SOURCE_IDS as string[]).splice((RECORD_SOURCE_IDS as string[]).indexOf(id), 1);
-    }
-  });
 
   const BODY1 = "秋名の川で外来種のカダヤシが見つかりました。駆除にご協力ください。";
   function seedPeriodical() {
@@ -449,7 +429,7 @@ describe("定期刊行物（periodical_issues・document_articles）", () => {
     const r = await q({ record_set: "periodical_issues" });
     expect(r.source_id).toBe(SRC);
     expect(ids(r, "issue_id")).toEqual(["tatsugo_koho_201502s", "tatsugo_koho_201904", "tatsugo_koho_202412"]);
-    expect(r.n_total).toBe(3);
+    expect(r.n_total).toBe(sourceAccess(SRC)?.recordSetRows.periodical_issues); // 事前計算（実データの件数。生成物から）
     const dec = r.rows.find((x) => x.issue_id === "tatsugo_koho_202412")!;
     expect(dec.n_articles).toBe(2); // kind='article' だけ（unsegmented を数えない）
     expect(dec.files).toEqual([

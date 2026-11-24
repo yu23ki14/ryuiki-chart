@@ -405,7 +405,7 @@ export const recordsInputSchema = z.object({
   issue: idText("号の絞り込み（record_set=periodical_issues・document_articles だけ）。issue_id か年月 'YYYY-MM' の完全一致").optional(),
   year: z.number().int().min(1900).max(2200).optional().describe("号の年月の暦年（record_set=periodical_issues・document_articles だけ。fiscal_year と併せたら AND）"),
   fiscal_year: z.number().int().min(1900).max(2200).optional().describe("4 月始まりの年度（record_set=periodical_issues・document_articles だけ。記事は載っている号の年度）"),
-  topic: idText("話題の topic_id の完全一致（record_set=document_articles だけ。語彙は describe_catalog what='sources' の出典の topics）").optional(),
+  topic: idText("話題の topic_id の完全一致（record_set=document_articles だけ。river_water〔河川・水〕・wildlife_alien〔生き物・外来種〕・disaster〔防災・災害〕・conservation_clean〔環境保全・清掃〕・agri_fishery〔農林水産〕・tourism〔観光〕・other〔その他〕。語彙の正は registry/article_topic.yaml）").optional(),
   place_id: idText("記事の地名に結べた place_id の完全一致（record_set=document_articles だけ。place に結べない地名は q で引く）").optional(),
   include_body: z
     .boolean()
