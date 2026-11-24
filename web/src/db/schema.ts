@@ -110,6 +110,112 @@ export const notes = sqliteTable("notes", {
 });
 
 /* ------------------------------------------------------------------ */
+/* 定期刊行物（広報たつごう。docs/plans/TATSUGO_KOHO.md §3）             */
+/* 原本は cells.sqlite（DDL は scripts/schema_tatsugo_koho.sql）。      */
+/* get_records の record_set=periodical_issues / document_articles。    */
+/* ------------------------------------------------------------------ */
+
+/** 定期刊行物の系列（ライセンスと合意の原文を 1 か所に置く）。 */
+export const periodicalSeries = sqliteTable("periodical_series", {
+	seriesId: text("series_id").primaryKey(),
+	sourceId: text("source_id"),
+	title: text(),
+	publisher: text(),
+	regionId: text("region_id"),
+	listingUrls: text("listing_urls"),
+	license: text(),
+	agreementNote: text("agreement_note"),
+});
+
+/** 号（月刊・別冊）。 */
+export const periodicalIssues = sqliteTable("periodical_issues", {
+	issueId: text("issue_id").primaryKey(),
+	seriesId: text("series_id").references(() => periodicalSeries.seriesId),
+	sourceId: text("source_id"),
+	regionId: text("region_id"),
+	kind: text(),
+	yearMonth: text("year_month"),
+	yearMonthTo: text("year_month_to"),
+	fiscalYear: integer("fiscal_year"),
+	issuedOn: text("issued_on"),
+	issuedOnRaw: text("issued_on_raw"),
+	labelRaw: text("label_raw"),
+	listingUrl: text("listing_url"),
+	headlines: text(),
+	nFiles: integer("n_files"),
+	nPages: integer("n_pages"),
+	note: text(),
+},
+(table) => [
+	index("ix_periodical_issues_source").on(table.sourceId),
+	index("ix_periodical_issues_ym").on(table.yearMonth),
+]);
+
+/** 号を構成する PDF ファイル（分割された号は複数）。 */
+export const periodicalIssueFiles = sqliteTable("periodical_issue_files", {
+	docId: text("doc_id").primaryKey().references(() => documents.docId),
+	issueId: text("issue_id").notNull().references(() => periodicalIssues.issueId),
+	partNo: integer("part_no"),
+	pageOffset: integer("page_offset"),
+	linkTextRaw: text("link_text_raw"),
+	downloadUrl: text("download_url"),
+},
+(table) => [index("ix_periodical_issue_files_issue").on(table.issueId)]);
+
+/** 記事（本文つき）。ページはファイル内ページ（page_*）と号内通しページ（issue_page_*）を両方持つ。 */
+export const documentArticles = sqliteTable("document_articles", {
+	articleId: text("article_id").primaryKey(),
+	issueId: text("issue_id").notNull().references(() => periodicalIssues.issueId),
+	docId: text("doc_id").notNull().references(() => documents.docId),
+	sourceId: text("source_id"),
+	regionId: text("region_id"),
+	kind: text(),
+	pageFrom: integer("page_from"),
+	pageTo: integer("page_to"),
+	issuePageFrom: integer("issue_page_from"),
+	issuePageTo: integer("issue_page_to"),
+	title: text(),
+	section: text(),
+	bodyText: text("body_text"),
+	bodySha256: text("body_sha256"),
+	eventDates: text("event_dates"),
+	docSha256: text("doc_sha256"),
+	extractor: text(),
+	confidence: real(),
+	verifiedBy: text("verified_by"),
+	unreadableReason: text("unreadable_reason"),
+	extractedAt: text("extracted_at"),
+},
+(table) => [
+	index("ix_document_articles_issue").on(table.issueId),
+	index("ix_document_articles_doc").on(table.docId, table.pageFrom),
+	index("ix_document_articles_source").on(table.sourceId),
+]);
+
+/** 記事の話題（語彙は registry/article_topic.yaml）。 */
+export const documentArticleTopics = sqliteTable("document_article_topics", {
+	articleId: text("article_id").notNull().references(() => documentArticles.articleId),
+	topicId: text("topic_id").notNull(),
+	extractor: text(),
+	confidence: real(),
+},
+(table) => [primaryKey({ columns: [table.articleId, table.topicId] })]);
+
+/** 記事に出た地名（原文を必ず残す。place_id は place 表に完全一致で 1 件に決まるときだけ）。 */
+export const documentArticlePlaces = sqliteTable("document_article_places", {
+	articleId: text("article_id").notNull().references(() => documentArticles.articleId),
+	placeRaw: text("place_raw").notNull(),
+	placeType: text("place_type"),
+	placeId: text("place_id"),
+	matchMethod: text("match_method"),
+	confidence: real(),
+},
+(table) => [
+	primaryKey({ columns: [table.articleId, table.placeRaw] }),
+	index("ix_document_article_places_place").on(table.placeId),
+]);
+
+/* ------------------------------------------------------------------ */
 /* Tier 1 追加ソース（docs/UNDATAFIED_TIERS.md）                        */
 /* 台帳・区域・メッシュ型のデータ。測定値は既存の measurements /        */
 /* sensor_timeseries に入れているのでここには無い。                     */
