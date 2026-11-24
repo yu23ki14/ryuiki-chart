@@ -668,3 +668,15 @@ hybrid は 1 問あたり D1 の LIKE を最大 6 本（各 約 5,300 行の走�
   （q=マングース、include_body、citation「龍郷町「広報たつごう」2012年6月号 p.6」、pdf_url に `#page=6`）が返った。
 - 教訓: 外部キーで参照される表（documents など）を `reload-tables.mjs` で入れ直すと、参照する表がリストの外にあるときに DELETE が失敗し、先に空にした表が空のまま残る。
   `reload-tables.mjs` は、空にする表を参照する表がリストの外にあれば、何も消す前に止まるようにした（`web/scripts/lib/fk-order.mjs` の `referencedOutside`、テストあり）。
+
+## 広報たつごうのベクトル検索の本番反映（2026-11-24、#134）
+
+D1 には手を入れていない。main は `36fdd3f`。直前の Worker は `ccf91d85-3bb0-4015-bbc0-263a1cbfd61a`。
+
+1. **インデックス**: `vectorize create ryuiki-koho-bgem3-v1 --dimensions=1024 --metric=cosine`（03:57 UTC）を実行し、`sync.mjs --init --execute` でメタデータインデックスを4つ作った（region_id・source_id・year・kind）。
+   - 作成直後の `list-metadata-index` には region_id しか出なかった。作り直そうとすると 3 つとも `already exists`（40004）になり、改めて一覧を見ると4つそろっていた。一覧への反映が遅れるだけなので、数十秒待ってから確かめる。
+2. **埋め込み**: キャッシュ済みだった（5,099 件が一意、新たに埋め込んだのは 0 件）。
+3. **投入**: `sync.mjs --execute` で 5,119 件を upsert した（ndjson 6 ファイル）。`status.mjs --remote` で vectorCount 5,119 になり、マニフェストと一致した。
+4. **デプロイ**: Version `221b96df-4b0d-48af-9f98-7d3a49dc27aa`。バインディングは `env.VECTORIZE`（ryuiki-koho-bgem3-v1）・`env.AI`。
+   - MCP の `tools/list` に `search_documents` が出た。
+   - 「台風のときの避難」の1位は 2020年7月号 p.4–5（避難の特集、similarity 0.626）だった。各行に citation と pdf_url（`#page=`）が付いた。
