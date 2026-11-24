@@ -637,7 +637,7 @@ docker で開発している間はコンテナ側のボリューム（`d1-state`
 4. 埋め込みを作る（手元のキャッシュ `data/vector/cache.sqlite`。AI Gateway 経由、`web/.env.local` の `AI_GATEWAY_*` を使う。約 70 秒・約 5,100 件）:
    `node scripts/vector/embed.mjs --cells <cells>`
 5. dry-run で件数を確かめてから投入する（既定が dry-run。`--execute` で wrangler の `vectorize upsert`〈ndjson、1,000 件ずつ〉を呼ぶ）:
-   `node scripts/vector/sync.mjs --cells <cells>`（初回は upsert 5,123・delete 0）→ `node scripts/vector/sync.mjs --cells <cells> --execute`
+   `node scripts/vector/sync.mjs --cells <cells>`（初回は upsert 5,127・delete 0）→ `node scripts/vector/sync.mjs --cells <cells> --execute`
 6. 反映は非同期。件数がマニフェスト（`data/vector/ryuiki-koho-bgem3-v1/manifest.jsonl`）と一致するまで待つ:
    `node scripts/vector/status.mjs --cells <cells> --remote --wait 300`
 7. `pnpm run deploy`。確認: MCP の `tools/list` に `search_documents` が出る／`tools/call` で「台風のときの避難」を引くと、各行に `citation`・`pdf_url` が付く。
@@ -652,5 +652,5 @@ docker で開発している間はコンテナ側のボリューム（`d1-state`
 ローカル開発: `next dev` は既定で Workers AI・Vectorize に接続しない（未ログインでも起動する）。ベクトル検索を手元で試すときだけ
 `wrangler login` のうえ `RYUIKI_REMOTE_BINDINGS=1 pnpm run dev`（本番のインデックスに接続し、AI の使用量が課金される）。
 
-費用: Workers Paid なら、保存 5,123 × 1024 次元は無料枠内、埋め込みは全件で約 300 万トークン（約 $0.04）、検索は 1 問ごとに埋め込み 1 回＋Vectorize 1 回。
+費用: Workers Paid なら、保存 5,127 × 1024 次元は無料枠内、埋め込みは全件で約 300 万トークン（約 $0.04）、検索は 1 問ごとに埋め込み 1 回＋Vectorize 1 回。
 hybrid は 1 問あたり D1 の LIKE を最大 6 本（各 約 5,300 行の走査）発行するので、`mode` の既定は semantic にしてある。

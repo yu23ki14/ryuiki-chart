@@ -9,7 +9,7 @@
  * 外部（Workers AI・Vectorize・D1）は `SearchDeps` で受け取る。既定は本番のバインディング、テストは偽物に差し替える。
  */
 import { z } from "zod";
-import { PERIODICAL_SOURCE_LICENSE, issueLabel, pdfPageUrl, periodicalCitation } from "@/lib/records";
+import { decorateArticle, issueLabel } from "@/lib/periodical";
 import { keywordRank, queryTerms, rrf } from "../../scripts/vector/keyword.mjs";
 import { normalizeBody } from "../../scripts/vector/chunk.mjs";
 import { embedQuery, getVectorBindings, type VectorIndexLike, type AiLike } from "@/lib/vector/bindings";
@@ -68,7 +68,7 @@ export interface SearchHit {
   citation: string;
   pdf_url: string;
   source_id: string;
-  source_license: string;
+  source_license: string | null;
   stale_index?: true;
   unreadable_reason?: string;
 }
@@ -101,12 +101,13 @@ interface ArticleRow {
   series_title: string | null;
   series_publisher: string | null;
   doc_url: string | null;
+  series_license: string | null;
 }
 
 const ARTICLE_COLS =
   "a.article_id, a.doc_id, a.source_id, a.region_id, a.kind, a.title, a.section, a.body_text, a.body_sha256, a.unreadable_reason, " +
   "a.issue_page_from, a.issue_page_to, a.page_from, pi.year_month, pi.year_month_to, pi.kind AS issue_kind, ps.title AS series_title, " +
-  "ps.publisher AS series_publisher, dd.url AS doc_url";
+  "ps.publisher AS series_publisher, dd.url AS doc_url, ps.license AS series_license";
 const ARTICLE_JOIN =
   "FROM document_articles a LEFT JOIN periodical_issues pi ON pi.issue_id = a.issue_id " +
   "LEFT JOIN periodical_series ps ON ps.series_id = pi.series_id LEFT JOIN documents dd ON dd.doc_id = a.doc_id";
@@ -234,12 +235,11 @@ export async function searchDocuments(deps: SearchDeps, rawInput: SearchDocument
   for (const o of ordered) {
     const row = rows.get(o.article_id);
     if (!row) continue;
-    const citation = periodicalCitation({
-      publisher: row.series_publisher, title: row.series_title, kind: row.issue_kind, year_month: row.year_month,
-      year_month_to: row.year_month_to, page_from: row.issue_page_from, page_to: row.issue_page_to,
-    });
-    const pdf = pdfPageUrl(row.doc_url, row.page_from);
-    if (citation === null || pdf === null) {
+    // citation・pdf_url・source_license は get_records と同じ関数（lib/periodical.ts）で付ける
+    const dec = decorateArticle(row as unknown as Parameters<typeof decorateArticle>[0]);
+    const citation = dec.citation;
+    const pdf = dec.pdf_url;
+    if (typeof citation !== "string" || typeof pdf !== "string") {
       droppedNoCitation++;
       continue;
     }
@@ -257,7 +257,7 @@ export async function searchDocuments(deps: SearchDeps, rawInput: SearchDocument
       citation,
       pdf_url: pdf,
       source_id: row.source_id,
-      source_license: PERIODICAL_SOURCE_LICENSE,
+      source_license: typeof dec.source_license === "string" ? dec.source_license : null,
     };
     if (mode === "hybrid") hit.similarity = chunk ? Math.round(chunk.score * 10000) / 10000 : null;
     if (stale) hit.stale_index = true;

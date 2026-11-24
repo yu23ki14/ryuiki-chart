@@ -85,7 +85,7 @@ function addArticle(a: Art, opts: { indexed?: boolean; bodyShaInIndex?: string }
   const ym = a.issue ?? "2014-08";
   const issueId = `iss_${ym}`;
   const docId = `doc_${ym}`;
-  raw.prepare("INSERT OR IGNORE INTO periodical_series (series_id, source_id, title, publisher) VALUES ('s','tatsugo_koho_amami','広報たつごう','龍郷町')").run();
+  raw.prepare("INSERT OR IGNORE INTO periodical_series (series_id, source_id, title, publisher, license) VALUES ('s','tatsugo_koho_amami','広報たつごう','龍郷町','著作権は龍郷町に帰属')").run();
   raw.prepare("INSERT OR IGNORE INTO periodical_issues (issue_id, series_id, source_id, region_id, kind, year_month) VALUES (?,?,?,?,?,?)").run(issueId, "s", "tatsugo_koho_amami", "jp-46", "monthly", ym);
   raw.prepare("INSERT OR IGNORE INTO documents (doc_id, url) VALUES (?,?)").run(docId, a.docUrl === undefined ? `https://example.test/${docId}.pdf` : a.docUrl);
   raw
