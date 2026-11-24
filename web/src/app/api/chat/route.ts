@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { streamText, convertToModelMessages, stepCountIs, createUIMessageStreamResponse, toUIMessageStream, type UIMessage } from "ai";
 import { getModel, isAiConfigured } from "@/lib/ai/provider";
 import { buildSystemPrompt, FINAL_STEP_NOTE, FINAL_STEP_USER_NUDGE } from "@/lib/ai/prompt";
-import { aiTools } from "@/lib/ai/tools";
+import { aiToolsFor } from "@/lib/ai/tools";
 import { guardAssistantStream } from "@/lib/ai/stream-guard";
 import type { PageContext } from "@/lib/ai/page-context";
 
@@ -44,12 +44,13 @@ export async function POST(req: NextRequest) {
   const messages = body.messages ?? [];
 
   const instructions = buildSystemPrompt(body.pageContext);
+  const tools = await aiToolsFor();
 
   const result = streamText({
     model: getModel(),
     instructions,
     messages: await convertToModelMessages(messages),
-    tools: aiTools,
+    tools,
     // 多段ツール呼び出しはレイテンシと課金の上限として MAX_STEPS ステップで打ち切る
     stopWhen: stepCountIs(MAX_STEPS),
     // 最後の1ステップはツールを外し、「ここまでの結果で答える」だけに使う。
@@ -75,13 +76,13 @@ export async function POST(req: NextRequest) {
         : undefined,
     // 最終ステップを予約しても、モデルが答えずに終わることが実測である（呼び出しの生トークンを
     // 本文に流す／本文が空のまま閉じる）。その2つを潰して「無言で終わらない」を保証する。
-    experimental_transform: guardAssistantStream<typeof aiTools>(),
+    experimental_transform: guardAssistantStream<typeof tools>(),
   });
 
   return createUIMessageStreamResponse({
     stream: toUIMessageStream({
       stream: result.stream,
-      tools: aiTools,
+      tools,
       // 既定では詳細を伏せて "An error occurred." だけが出る。資格情報の設定直後は
       // ゲートウェイの 401/404 とモデル側のエラーを切り分けられないと詰まるので、
       // 由来が分かる範囲だけ日本語で返す。

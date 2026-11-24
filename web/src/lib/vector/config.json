@@ -1,0 +1,17 @@
+{
+  "_comment": "ベクトル検索の設定（スクリプトも Worker も同じファイルを読む）。変えたら全件を作り直す（index_name を新しくする）。設計: docs/plans/TATSUGO_KOHO_VECTOR.md §3",
+  "model": "@cf/baai/bge-m3",
+  "dimensions": 1024,
+  "metric": "cosine",
+  "index_name": "ryuiki-koho-bgem3-v1",
+  "chunker_version": 1,
+  "query_prefix": "",
+  "candidates": {
+    "@cf/baai/bge-m3": { "dimensions": 1024, "query_prefix": "", "short": "bgem3" },
+    "@cf/qwen/qwen3-embedding-0.6b": {
+      "dimensions": 1024,
+      "query_prefix": "Instruct: 住民向け広報誌から、質問に答えている記事を探す\nQuery: ",
+      "short": "qwen3"
+    }
+  }
+}

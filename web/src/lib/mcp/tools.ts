@@ -58,6 +58,11 @@ export interface McpContext {
   /** リクエストのオリジン（`https://host`）。応答に載せる公開 URL（get_watersheds の geojson_url）の組み立てに使う。無ければ相対パスを返す。 */
   origin?: string;
   now?: Date;
+  /**
+   * `search_documents`（ベクトル検索）の依存。省略時は本番のバインディング（`defaultSearchDeps`）。
+   * null を返すとツールは一覧に出ない。テストで偽物を渡す。
+   */
+  vector?: () => Promise<import("@/lib/document-search").SearchDeps | null>;
 }
 
 export interface McpTool {

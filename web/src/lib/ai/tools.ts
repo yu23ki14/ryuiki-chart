@@ -36,6 +36,14 @@ import { regionSchema, REGION_NOTE } from "@/lib/mcp/region-schema";
 import { REGIONS } from "@/lib/region";
 import { DEFAULT_REDLIST_REGION, redlistEditions } from "@/lib/redlist-editions";
 import { byteLength, fitHeadRows } from "@/lib/fit-head-rows";
+import {
+  SEARCH_DOCUMENTS_DESCRIPTION,
+  VectorUnavailableError,
+  defaultSearchDeps,
+  searchDocuments,
+  searchDocumentsInputSchema,
+  type SearchDeps,
+} from "@/lib/document-search";
 import { FIND_DATASETS_DESCRIPTION, FindDatasetsInputError, findDatasetsInputSchema, queryDatasets } from "@/lib/catalog-search";
 
 /** 測定値系データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。registry の dataset キー。 */
@@ -963,6 +971,38 @@ const find_datasets = tool({
   },
 });
 
+/* ------------------------------------------------------------------ */
+/* search_documents（広報たつごうの内容検索。Workers AI・Vectorize があるときだけ一覧に出る） */
+/* ------------------------------------------------------------------ */
+
+/** AI の search_documents の既定の件数（応答の大きさから MCP と同じ 5）。 */
+export function searchDocumentsAiTool(getDeps: () => Promise<SearchDeps | null> = defaultSearchDeps) {
+  return tool({
+    description: SEARCH_DOCUMENTS_DESCRIPTION,
+    inputSchema: searchDocumentsInputSchema,
+    execute: async (input) => {
+      const t0 = performance.now();
+      const fail = (error: string) => makeResult({ tool: "search_documents", tables: [], caveats: [], data: { error }, rowCount: 0, elapsedMs: performance.now() - t0 });
+      const deps = await getDeps();
+      if (!deps) return fail("ベクトル検索はこの環境では使えない。get_records（record_set=document_articles の q）で探す");
+      try {
+        const r = await searchDocuments(deps, input);
+        return makeResult({
+          tool: "search_documents",
+          tables: ["document_articles", "periodical_issues", "periodical_series", "documents"],
+          caveats: caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds: r.source_ids })),
+          elapsedMs: performance.now() - t0,
+          data: { mode: r.mode, rows: r.rows, ...(r.notes.length ? { notes: r.notes } : {}) },
+          rowCount: r.rows.length,
+        });
+      } catch (e) {
+        if (e instanceof VectorUnavailableError) return fail("ベクトル検索に一時的に接続できない。get_records（record_set=document_articles の q）で探す");
+        throw e;
+      }
+    },
+  });
+}
+
 export const aiTools = {
   list_catalog,
   get_timeseries,
@@ -977,3 +1017,14 @@ export const aiTools = {
   describe_schema,
   run_sql,
 };
+
+/** この環境で使うツール。ベクトル検索が使えるとき（バインディングがあるとき）だけ search_documents を足す。 */
+export async function aiToolsFor() {
+  let deps: SearchDeps | null = null;
+  try {
+    deps = await defaultSearchDeps();
+  } catch {
+    deps = null;
+  }
+  return deps ? { ...aiTools, search_documents: searchDocumentsAiTool(async () => deps) } : aiTools;
+}

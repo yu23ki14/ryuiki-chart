@@ -146,6 +146,8 @@ get_timeseries の grain（時間の粒度）は "year"（暦年。検体値か�
    使える出典と record_set の一覧は get_records の説明文にある。続きは next_after を after に渡して取る）
    （外部ポータル（CKAN・e-Stat）にどんなデータがあるか・最新を取る URL は find_datasets。値は返さず、定義と URL を返す。
    目録は fetched_at 時点の写しなので、最新の更新日は urls.api_package_show で確かめるよう伝える。続きは offset で取る）
+   （広報たつごうの記事を内容で探すのは search_documents（ツールがあるときだけ）。結果の citation を出典として示し、pdf_url を添える。
+   snippet は PDF の機械読み取りで文が崩れていることがあるので、そこから事実を断定しない）
 3. これらで答えられない問いのときだけ run_sql を使う（SELECT/WITH/EXPLAIN のみ、行数200・応答24KBまでに切り詰められる）
 4. ツールの結果には caveats（注記のキーの配列）が機械的に付いてくる。上の「データの癖・注記」から
    そのキーの本文を引き、関係する内容は必ず回答に反映すること
