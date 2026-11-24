@@ -1,11 +1,11 @@
 """m13: 龍郷町「広報たつごう」の号・ファイル・記事を cells.sqlite に作る（Issue #130、docs/plans/TATSUGO_KOHO.md §2・§3・§7.2・§8.1・§9）。
 
-入力（`data/processed/tatsugo_koho/`。収集担当 c106 の出力。契約は設計書 §7.1。gitignore 済みの生成物）:
+入力（`data/raw/tatsugo_koho/`。収集担当 c106 の `extract` の出力。契約は設計書 §7.1。gitignore 済みの生成物）:
 
-- `catalog.jsonl`: PDF ファイルごとに 1 行。c106 の catalog.json の行（`url`・`link_text`・`source_page`・`heading`・`headlines`・
-  `year`・`month`・`months`・`part`・`merged`・`annex`・`issue_date`）に、取得結果 `sha256`・`n_pages`・`fetched_at`・`saved_name`
-  （無ければ url の末尾）を足したもの。号はリンク文から決まったものだけを使い、ファイル名は ID に使わない。
-- `articles.jsonl`: 記事ごとに 1 行。`doc_id`（§2.1 の規則。`doc_id_of()` と同じ）・`page_from`・`page_to`（ファイル内ページ）・
+- `issues.jsonl`・`files.jsonl`: 号とファイル（`periodical_issues`・`periodical_issue_files` の列に `local_path`・`sha256`・`n_pages` を足した形）。
+  doc_id・page_offset・n_files・n_pages は §2・§3 の規則と照合する（食い違えば止まる）。未取得のファイル（sha256・n_pages が無い）がある号は、
+  `--allow-partial` なら号ごと除き、無ければ止まる。
+- `articles.jsonl`: 記事ごとに 1 行。`doc_id`・`page_from`・`page_to`（ファイル内ページ）・
   `kind`・`title`・`section`・`body_text`・`event_dates`・`extractor`・`confidence`・`unreadable_reason`・`extracted_at`・`verified_by`、
   入れ子の `topics`（`{topic_id, extractor, confidence}`）・`places`（`{place_raw, place_type, place_id, match_method, confidence}`）。
   `article_id`・`issue_id`・`source_id`・`region_id`・`issue_page_*`・`body_sha256`・`doc_sha256` は m13 が決める。
@@ -43,6 +43,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import doccells as dc  # noqa: E402
+import tatsugo_segment as seg  # noqa: E402
+from c106_tatsugo_koho import read_jsonl  # noqa: E402  jsonl の読み書きは c106 と共通
 from registry.build_article_topic import load_topics  # noqa: E402
 
 SERIES_ID = "tatsugo_koho"
@@ -71,7 +73,7 @@ KINDS = ("article", "unsegmented", "cover_toc")
 PLACE_TYPES = ("settlement", "river", "coast", "other")
 
 DDL_PATH = ROOT / "scripts" / "schema_tatsugo_koho.sql"
-DEFAULT_PROCESSED = ROOT / "data" / "raw" / "tatsugo_koho"
+DEFAULT_RAW = ROOT / "data" / "raw" / "tatsugo_koho"
 DEFAULT_WITHDRAWN = ROOT / "scripts" / "data" / "tatsugo_koho_withdrawn.yaml"
 
 TABLES_CHILD_FIRST = (
@@ -84,7 +86,7 @@ class M13Error(ValueError):
     pass
 
 
-def norm(s: str | None) -> str:
+def norm_id(s: str | None) -> str:
     """NFKC・空白除去（見出しの突合・article_id・body_sha256 の正規化）。"""
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", s or ""))
 
@@ -96,122 +98,6 @@ def sha256_text(s: str) -> str:
 # ---------------------------------------------------------------------------
 # 号・ファイル（§2.1・§2.2・§3.2〜3.4）
 # ---------------------------------------------------------------------------
-
-def _fiscal_year(year: int, month: int) -> int:
-    return year if month >= 4 else year - 1
-
-
-def _sorted_catalog(rows: list[dict]) -> list[dict]:
-    for r in rows:
-        for k in ("url", "link_text", "year", "month", "issue", "sha256", "n_pages"):
-            if r.get(k) in (None, ""):
-                raise M13Error(f"catalog.jsonl: {k} の無い行がある: {r.get('url') or r.get('link_text')!r}")
-    return sorted(rows, key=lambda r: (r["issue"], bool(r.get("annex")), r.get("part") or 0, r["url"]))
-
-
-def assign_ids(rows: list[dict]) -> list[dict]:
-    """カタログの各行に `issue_id`・`doc_id`・`part_no` を付けて返す（入力は変えない）。
-
-    - 月刊・合併号: issue_id=`tatsugo_koho_YYYYMM`（合併号は若い月）。ファイルが 1 つなら doc_id=issue_id。
-      2 つ以上なら part（1 始まり・重複なし・連続）が必須で、doc_id=`…_p<part>`。
-    - 別冊: 1 ファイル＝1 号。issue_id＝doc_id＝`tatsugo_koho_YYYYMM_sp<n>`（n は同月の別冊の通し番号）。
-    """
-    out: list[dict] = []
-    monthly: dict[str, list[dict]] = {}
-    annex_n: dict[str, int] = {}
-    for r in _sorted_catalog(rows):
-        r = dict(r)
-        if r.get("annex"):
-            annex_n[r["issue"]] = annex_n.get(r["issue"], 0) + 1
-            r["issue_id"] = r["doc_id"] = f"{DOC_PREFIX}{r['issue']}_sp{annex_n[r['issue']]}"
-            r["part_no"] = 1
-            out.append(r)
-        else:
-            monthly.setdefault(r["issue"], []).append(r)
-    for issue, files in monthly.items():
-        base = f"{DOC_PREFIX}{issue}"
-        if len(files) == 1:
-            files[0].update(issue_id=base, doc_id=base, part_no=1)
-        else:
-            parts = sorted(f.get("part") or 0 for f in files)
-            if parts != list(range(1, len(files) + 1)):
-                raise M13Error(f"{issue}: ファイルが {len(files)} 個あるのに part が 1..{len(files)} になっていない: {parts}")
-            for f in files:
-                f.update(issue_id=base, doc_id=f"{base}_p{f['part']}", part_no=f["part"])
-        out += files
-    ids = [r["doc_id"] for r in out]
-    if len(ids) != len(set(ids)):
-        raise M13Error("doc_id が重複している")
-    return sorted(out, key=lambda r: (r["issue_id"], r["part_no"]))
-
-
-def doc_id_of(row: dict, siblings: list[dict]) -> str:
-    """収集担当が doc_id を決めるときの入口（`assign_ids` と同じ規則）。`siblings` は同じカタログの全行。"""
-    key = (row["url"],)
-    for r in assign_ids(siblings):
-        if (r["url"],) == key:
-            return r["doc_id"]
-    raise M13Error(f"カタログに無い行: {row['url']}")
-
-
-def _title(r: dict) -> str:
-    y, m = r["year"], r["month"]
-    if r.get("annex"):
-        t = f"広報たつごう {y}年{m}月 別冊"
-    elif r.get("merged"):
-        t = f"広報たつごう {y}年{r['months'][0]}・{r['months'][1]}月合併号"
-    else:
-        t = f"広報たつごう {y}年{m}月号"
-    n_parts = r.get("_n_parts", 1)
-    return f"{t}（その{r['part_no']}）" if n_parts > 1 else t
-
-
-def build_issues(files: list[dict]) -> tuple[list[dict], list[dict], list[dict]]:
-    """(documents の行, periodical_issues の行, periodical_issue_files の行)。files は `assign_ids` の結果。"""
-    by_issue: dict[str, list[dict]] = {}
-    for f in files:
-        by_issue.setdefault(f["issue_id"], []).append(f)
-    docs, issues, links = [], [], []
-    for issue_id in sorted(by_issue):
-        fs = sorted(by_issue[issue_id], key=lambda f: f["part_no"])
-        offset = 0
-        head = fs[0]
-        for f in fs:
-            f["_n_parts"] = len(fs)
-            n_pages = int(f["n_pages"])
-            if n_pages < 1:
-                raise M13Error(f"{f['doc_id']}: n_pages が 1 未満")
-            f["page_offset"] = offset
-            f["n_pages"] = n_pages
-            offset += n_pages
-            saved = f.get("saved_name") or f["url"].rsplit("/", 1)[-1]
-            docs.append(dict(
-                doc_id=f["doc_id"], title=_title(f), publisher=PUBLISHER, url=f["url"], local_path=f"{RAW_SUBDIR}/{saved}",
-                doc_sha256=f["sha256"], n_pages=n_pages, fiscal_year=_fiscal_year(f["year"], f["month"]),
-                license=LICENSE_TEXT, fetched_at=f.get("fetched_at")))
-            links.append(dict(doc_id=f["doc_id"], issue_id=issue_id, part_no=f["part_no"], page_offset=f["page_offset"],
-                              link_text_raw=f["link_text"], download_url=f["url"]))
-        headlines: list[str] = []
-        for f in fs:
-            for h in f.get("headlines") or []:
-                if h not in headlines:
-                    headlines.append(h)
-        dated = next((f for f in fs if f.get("issue_date")), None)
-        merged = bool(head.get("merged"))
-        issues.append(dict(
-            issue_id=issue_id, series_id=SERIES_ID, source_id=SOURCE_ID, region_id=REGION_ID,
-            kind="supplement" if head.get("annex") else "monthly",
-            year_month=f"{head['year']:04d}-{head['month']:02d}",
-            year_month_to=f"{head['year']:04d}-{head['months'][1]:02d}" if merged else None,
-            fiscal_year=_fiscal_year(head["year"], head["month"]),
-            issued_on=dated["issue_date"] if dated else None,
-            issued_on_raw=dated.get("heading") if dated else None,
-            label_raw=head["link_text"], listing_url=head.get("source_page"),
-            headlines=json.dumps(headlines, ensure_ascii=False) if headlines else None,
-            n_files=len(fs), n_pages=offset,
-            note=("合併号（%d月号は単独の号が無い）" % head["months"][1]) if merged else ("別冊" if head.get("annex") else None)))
-    return docs, issues, links
-
 
 def check_issue_continuity(issues: list[dict]) -> None:
     """月刊は最初の月から最後の月まで欠けがない（合併号の 2 か月目は埋まっているものとして数える）。"""
@@ -240,10 +126,10 @@ def check_issue_continuity(issues: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 def _h8(a: dict) -> str | None:
-    t = norm(a.get("title"))
+    t = norm_id(a.get("title"))
     if t:
         return sha256_text(t)[:8]
-    b = norm(a.get("body_text"))[:40]
+    b = norm_id(a.get("body_text"))[:40]
     return sha256_text(b)[:8] if b else None
 
 
@@ -256,7 +142,6 @@ def build_articles(arts: list[dict], files: list[dict], topic_ids: set[str], pla
     untitled: dict[tuple[str, int], int] = {}
     # 同じ (doc_id, page_from, 見出しの h8) が複数ある記事（同じページに同じ見出し。例「主な活動」「▼連絡先」）は、
     # 見出し＋本文の先頭 80 字で h8 を作り直して区別する（入力の並びに依存しない）。それでも重なれば止まる。
-    n_ordinal = 0
     first_keys: dict[tuple, int] = {}
     for a in arts:
         k = (a.get("doc_id"), a.get("page_from"), _h8(a))
@@ -265,7 +150,7 @@ def build_articles(arts: list[dict], files: list[dict], topic_ids: set[str], pla
         doc_id = a.get("doc_id")
         f = by_doc.get(doc_id)
         if f is None:
-            raise M13Error(f"articles.jsonl: doc_id {doc_id!r} が catalog.jsonl に無い")
+            raise M13Error(f"articles.jsonl: doc_id {doc_id!r} が files.jsonl に無い")
         p0, p1 = a.get("page_from"), a.get("page_to")
         if not (isinstance(p0, int) and isinstance(p1, int) and 1 <= p0 <= p1 <= f["n_pages"]):
             raise M13Error(f"{doc_id}: ページ範囲が不正 {p0}-{p1}（1..{f['n_pages']}）")
@@ -282,7 +167,7 @@ def build_articles(arts: list[dict], files: list[dict], topic_ids: set[str], pla
             raise M13Error(f"{doc_id} p{p0}: confidence が 0..1 でない")
         h8 = _h8(a)
         if h8 is not None and first_keys[(doc_id, p0, h8)] > 1:
-            h8 = sha256_text(norm(a.get("title")) + "\0" + norm(body)[:80])[:8]
+            h8 = sha256_text(norm_id(a.get("title")) + "\0" + norm_id(body)[:80])[:8]
         if h8 is None:
             k = untitled[(doc_id, p0)] = untitled.get((doc_id, p0), 0) + 1
             h8 = f"untitled{k}"
@@ -294,7 +179,6 @@ def build_articles(arts: list[dict], files: list[dict], topic_ids: set[str], pla
             while f"{article_id}x{k}" in seen:
                 k += 1
             article_id = f"{article_id}x{k}"
-            n_ordinal += 1
         seen.add(article_id)
         ev = a.get("event_dates")
         if ev is not None and not (isinstance(ev, list) and all(isinstance(e, dict) and "raw" in e for e in ev)):
@@ -304,7 +188,7 @@ def build_articles(arts: list[dict], files: list[dict], topic_ids: set[str], pla
             article_id=article_id, issue_id=f["issue_id"], doc_id=doc_id, source_id=SOURCE_ID, region_id=REGION_ID, kind=kind,
             page_from=p0, page_to=p1, issue_page_from=p0 + off, issue_page_to=p1 + off,
             title=a.get("title"), section=a.get("section"), body_text=body,
-            body_sha256=sha256_text(norm(body)) if body else None,
+            body_sha256=sha256_text(norm_id(body)) if body else None,
             event_dates=json.dumps(ev, ensure_ascii=False) if ev is not None else None,
             doc_sha256=f["sha256"], extractor=a.get("extractor"), confidence=conf, verified_by=a.get("verified_by"),
             unreadable_reason=a.get("unreadable_reason"), extracted_at=a.get("extracted_at")))
@@ -349,9 +233,6 @@ def check_coverage(files: list[dict], articles: list[dict]) -> None:
                        + "; ".join(f"{d} {g[:10]}{'…' if len(g) > 10 else ''}" for d, g in sorted(bad.items())[:10]))
 
 
-UNREADABLE_REASONS = ("scanned_no_ocr", "garbled_font_encoding", "no_text_layer")
-
-
 def headline_check(issues: list[dict], articles: list[dict]) -> dict:
     """令和 2 年度以降の「主な記事」見出し（HTML）と、抽出した記事の突合（`tatsugo_segment.reconcile_issue` と同じ分類）。
 
@@ -359,7 +240,6 @@ def headline_check(issues: list[dict], articles: list[dict]) -> dict:
     （スキャン・文字化け）のある号で見つからなかったもの（missed_unreadable。OCR で読める可能性）」を除いた数で割る
     （`found`/`total`）。題の一致率（`title_matched`）は報告するだけ。
     -> {"found", "total", "title_matched", "classes"（分類ごとの数）, "missing"（(号, 見出し, 分類)。読めない理由の無い取りこぼし）}"""
-    import tatsugo_segment as seg  # 標準ライブラリだけ（CI に追加の依存は無い）
     by_issue: dict[str, list[dict]] = {}
     for a in articles:
         by_issue.setdefault(a["issue_id"], []).append(a)
@@ -371,7 +251,7 @@ def headline_check(issues: list[dict], articles: list[dict]) -> dict:
         if not hl:
             continue
         arts = by_issue.get(i["issue_id"], [])
-        unread = sum(1 for a in arts if a["unreadable_reason"] in UNREADABLE_REASONS)
+        unread = sum(1 for a in arts if a["unreadable_reason"] in seg.UNREADABLE_REASONS)
         r = seg.reconcile_issue(hl, arts, unread)
         n_headlines += r["headlines"]
         for k in classes:
@@ -423,24 +303,13 @@ def apply_withdrawals(model: dict, items: list[dict]) -> dict:
 # 組み立て全体（DB に触らない）と書き込み
 # ---------------------------------------------------------------------------
 
-def build_model(catalog: list[dict], articles_in: list[dict], topic_ids: set[str], withdrawals: list[dict], *,
-                allow_partial: bool = False, place_ids: set[str] | None = None, headline_threshold: float = HEADLINE_THRESHOLD,
-                expect_issues: int = EXPECTED_ISSUES, expect_files: int = EXPECTED_FILES) -> dict:
-    """c106 の catalog 形（PDF ごとの目録）から組み立てる。"""
-    files = assign_ids(catalog)
-    docs, issues, links = build_issues(files)
-    return finish_model(docs, issues, links, files, articles_in, topic_ids, withdrawals, allow_partial=allow_partial,
-                        place_ids=place_ids, headline_threshold=headline_threshold, expect_issues=expect_issues,
-                        expect_files=expect_files)
-
-
 def _mtime_iso(path: pathlib.Path) -> str | None:
     """PDF の取得日時（ファイルの更新時刻。c99 と同じ）。ファイルが無ければ None。"""
     import datetime
     return datetime.datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds") if path.exists() else None
 
 
-def from_extract(issues: list[dict], files: list[dict], raw_dir: pathlib.Path | None = None) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+def from_extract(issues: list[dict], files: list[dict], raw_dir: pathlib.Path | None = None, *, allow_partial: bool = False) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
     """c106 `extract` の issues.jsonl / files.jsonl（`periodical_issues`・`periodical_issue_files` の列で出てくる）を受ける。
     doc_id・page_offset・n_files・n_pages が §2・§3 の規則と食い違えば止まる（c106 側の誤りをここで見つける）。
     -> (documents の行, periodical_issues の行, periodical_issue_files の行, 記事の検査に使うファイル行)。"""
@@ -451,10 +320,16 @@ def from_extract(issues: list[dict], files: list[dict], raw_dir: pathlib.Path | 
     if len(iss) != len(issues) or set(by_issue) != set(iss):
         raise M13Error("issues.jsonl と files.jsonl の号が一致しない")
     docs, out_issues, links, flist = [], [], [], []
+    skipped: list[str] = []
     for issue_id in sorted(iss):
         i = iss[issue_id]
         fs = sorted(by_issue[issue_id], key=lambda f: f["part_no"])
         n = len(fs)
+        if any(f.get("n_pages") is None or not f.get("sha256") for f in fs):  # 未取得のファイルがある号
+            if not allow_partial:
+                raise M13Error(f"{issue_id}: 未取得のファイル（sha256・n_pages が無い）がある。取得してから extract を回す（一部だけなら --allow-partial）")
+            skipped.append(issue_id)
+            continue
         if [f["part_no"] for f in fs] != list(range(1, n + 1)):
             raise M13Error(f"{issue_id}: part_no が 1..{n} でない")
         offset = 0
@@ -493,6 +368,8 @@ def from_extract(issues: list[dict], files: list[dict], raw_dir: pathlib.Path | 
             issued_on=i.get("issued_on"), issued_on_raw=i.get("issued_on_raw"), label_raw=i.get("label_raw"),
             listing_url=i.get("listing_url"), headlines=json.dumps(h, ensure_ascii=False) if h else None,
             n_files=n, n_pages=offset, note=i.get("note")))
+    if skipped:
+        print(f"未取得の号を除いた（--allow-partial）: {skipped}", file=sys.stderr)
     return docs, out_issues, links, flist
 
 
@@ -537,14 +414,15 @@ def write(con: sqlite3.Connection, model: dict) -> dict:
     old = previous_articles(con)
     con.execute("BEGIN IMMEDIATE")
     try:
-        con.execute("DELETE FROM document_article_places WHERE article_id IN (SELECT article_id FROM document_articles WHERE source_id = ?)", (SOURCE_ID,))
-        con.execute("DELETE FROM document_article_topics WHERE article_id IN (SELECT article_id FROM document_articles WHERE source_id = ?)", (SOURCE_ID,))
-        con.execute("DELETE FROM document_articles WHERE source_id = ?", (SOURCE_ID,))
-        con.execute("DELETE FROM periodical_issue_files WHERE doc_id GLOB ?", (DOC_PREFIX + "*",))
-        con.execute("DELETE FROM periodical_issues WHERE series_id = ?", (SERIES_ID,))
-        con.execute("DELETE FROM periodical_series WHERE series_id = ?", (SERIES_ID,))
-        con.execute("DELETE FROM notes WHERE doc_id GLOB ?", (DOC_PREFIX + "*",))
-        con.execute("DELETE FROM documents WHERE doc_id GLOB ?", (DOC_PREFIX + "*",))
+        mine = DOC_PREFIX + "*"
+        article_ids = "article_id IN (SELECT article_id FROM document_articles WHERE source_id = ?)"
+        for table, where, arg in (
+            ("document_article_places", article_ids, SOURCE_ID), ("document_article_topics", article_ids, SOURCE_ID),
+            ("document_articles", "source_id = ?", SOURCE_ID), ("periodical_issue_files", "doc_id GLOB ?", mine),
+            ("periodical_issues", "series_id = ?", SERIES_ID), ("periodical_series", "series_id = ?", SERIES_ID),
+            ("notes", "doc_id GLOB ?", mine), ("documents", "doc_id GLOB ?", mine),
+        ):
+            con.execute(f"DELETE FROM {table} WHERE {where}", (arg,))
 
         listing = [INDEX_URL] + sorted({i["listing_url"] for i in model["issues"] if i["listing_url"]})
         con.execute("INSERT INTO periodical_series VALUES (?,?,?,?,?,?,?,?)",
@@ -579,10 +457,11 @@ def _insert(con: sqlite3.Connection, table: str, rows: list[dict]) -> None:
                     [[r[c] for c in cols] for r in rows])
 
 
-def read_jsonl(path: pathlib.Path) -> list[dict]:
-    if not path.exists():
-        raise M13Error(f"{path} が無い（収集担当の出力。設計書 §7.1）")
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+def read_input(path: pathlib.Path) -> list[dict]:
+    try:
+        return read_jsonl(path)
+    except FileNotFoundError:
+        raise M13Error(f"{path} が無い（c106 の extract の出力。設計書 §7.1）") from None
 
 
 def report(model: dict, diff: dict | None) -> None:
@@ -604,7 +483,7 @@ def report(model: dict, diff: dict | None) -> None:
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--processed-dir", type=pathlib.Path, default=DEFAULT_PROCESSED)
+    ap.add_argument("--raw-dir", type=pathlib.Path, default=DEFAULT_RAW, help="c106 extract の出力先（issues/files/articles.jsonl と PDF）")
     ap.add_argument("--cells", help="書き込み先の cells.sqlite（既定は data/db/cells.sqlite）。指定時は source_registry に登録しない")
     ap.add_argument("--withdrawn", type=pathlib.Path, default=DEFAULT_WITHDRAWN)
     ap.add_argument("--registry-db", help="place_id の実在を検査する registry.sqlite（省略時は検査しない）")
@@ -619,13 +498,10 @@ def main(argv=None) -> None:
         place_ids = {r[0] for r in rc.execute("SELECT place_id FROM place")}
         rc.close()
     kw = dict(allow_partial=a.allow_partial, place_ids=place_ids, headline_threshold=HEADLINE_THRESHOLD)
-    articles_in = read_jsonl(a.processed_dir / "articles.jsonl")
-    if (a.processed_dir / "issues.jsonl").exists():  # c106 extract の出力（既定）
-        docs, issues, links, files = from_extract(read_jsonl(a.processed_dir / "issues.jsonl"), read_jsonl(a.processed_dir / "files.jsonl"),
-                                                  a.processed_dir)
-        model = finish_model(docs, issues, links, files, articles_in, set(load_topics()), load_withdrawn(a.withdrawn), **kw)
-    else:
-        model = build_model(read_jsonl(a.processed_dir / "catalog.jsonl"), articles_in, set(load_topics()), load_withdrawn(a.withdrawn), **kw)
+    docs, issues, links, files = from_extract(read_input(a.raw_dir / "issues.jsonl"), read_input(a.raw_dir / "files.jsonl"),
+                                              a.raw_dir, allow_partial=a.allow_partial)
+    model = finish_model(docs, issues, links, files, read_input(a.raw_dir / "articles.jsonl"), set(load_topics()),
+                         load_withdrawn(a.withdrawn), **kw)
     if a.dry_run:
         report(model, None)
         return
@@ -640,8 +516,9 @@ def main(argv=None) -> None:
         common.register(
             source_id=SOURCE_ID, name="龍郷町 広報たつごう", publisher=PUBLISHER, url=INDEX_URL, category="行政広報誌",
             access_method="PDF 個別ダウンロード（documents・periodical_*・document_articles。本文あり）", fmt="PDF",
-            license_=LICENSE_TEXT, redistributable=1, record_count=len(model["articles"]),
-            notes="号と記事は get_records の record_set=periodical_issues / document_articles。設計は docs/plans/TATSUGO_KOHO.md。")
+            license_=LICENSE_TEXT, redistributable=1,  # 根拠は下の notes record_count=len(model["articles"]),
+            notes="号と記事は get_records の record_set=periodical_issues / document_articles。設計は docs/plans/TATSUGO_KOHO.md。"
+                  "redistributable=1 の根拠: 2026-11-24 オーナーが龍郷町の広報担当と確認し、公開分の再配布（本文の掲載）が可。自由な再利用ライセンスではない。")
 
 
 if __name__ == "__main__":

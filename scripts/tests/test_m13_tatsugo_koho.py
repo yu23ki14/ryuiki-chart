@@ -1,4 +1,4 @@
-"""m13（広報たつごう → cells.sqlite。docs/plans/TATSUGO_KOHO.md）のテスト。合成の catalog/articles と、合成の cells.sqlite だけを使う。"""
+"""m13（広報たつごう → cells.sqlite。docs/plans/TATSUGO_KOHO.md）のテスト。合成の目録（c106 の build_issue_tables を通す）/articles と、合成の cells.sqlite だけを使う。"""
 import copy
 import json
 import sqlite3
@@ -6,6 +6,7 @@ import sqlite3
 import pytest
 import yaml
 
+import c106_tatsugo_koho as c106
 import m13_tatsugo_koho as m13
 from registry import common as rcommon
 from registry.build_article_topic import TopicError, load_topics
@@ -51,25 +52,37 @@ def catalog():
     ]
 
 
+def extract_rows(catalog, *, unfetched=()):
+    """c106 の目録（cat の行）→ issues.jsonl / files.jsonl の行（c106.build_issue_tables。m13 の入力契約をそのまま通す）。"""
+    log = {r["url"].rsplit("/", 1)[-1]: {"sha256": r["sha256"], "pages": r["n_pages"]} for r in catalog
+           if r["url"].rsplit("/", 1)[-1] not in unfetched}
+    return c106.build_issue_tables(catalog, log)
+
+
+def files_of(catalog):
+    return extract_rows(catalog)[1]
+
+
 def arts_for(catalog):
-    files = m13.assign_ids(catalog)
     out = []
-    for f in files:
+    for f in files_of(catalog):
         out += full_cover(f["doc_id"], f["n_pages"])
     return out
 
 
-def build(catalog, arts=None, withdrawals=(), **kw):
+def build(catalog, arts=None, withdrawals=(), *, unfetched=(), **kw):
     kw.setdefault("allow_partial", True)
     arts = arts_for(catalog) if arts is None else arts
     # 見出し突合は個別テストで見る（既定の合成記事には含めない）
     kw.setdefault("headline_threshold", 0.0)
-    return m13.build_model(catalog, arts, TOPICS, list(withdrawals), **kw)
+    issues, files = extract_rows(catalog, unfetched=unfetched)
+    docs, iss, links, fl = m13.from_extract(issues, files, allow_partial=kw["allow_partial"])
+    return m13.finish_model(docs, iss, links, fl, arts, TOPICS, list(withdrawals), **kw)
 
 
 # ---------------------------------------------------------------- doc_id・号・ページ
 def test_doc_id_rules(catalog):
-    files = {f["url"].rsplit("/", 1)[-1]: f for f in m13.assign_ids(catalog)}
+    files = {f["local_path"].rsplit("/", 1)[-1]: f for f in files_of(catalog)}
     assert files["201502.pdf"]["doc_id"] == "tatsugo_koho_201502"
     assert files["bessatsu.pdf"]["doc_id"] == files["bessatsu.pdf"]["issue_id"] == "tatsugo_koho_201502_sp1"
     assert files["a.pdf"]["doc_id"] == "tatsugo_koho_201808_p1" and files["b.pdf"]["doc_id"] == "tatsugo_koho_201808_p2"
@@ -78,11 +91,37 @@ def test_doc_id_rules(catalog):
     assert files["202611.pdf"]["doc_id"] == "tatsugo_koho_202611"
 
 
-def test_split_needs_consecutive_parts():
-    with pytest.raises(m13.M13Error, match="part"):
-        m13.assign_ids([cat("201808", part=1, name="a"), cat("201808", part=1, name="b")])
-    with pytest.raises(m13.M13Error, match="part"):
-        m13.assign_ids([cat("201808", name="a"), cat("201808", name="b")])
+def test_two_annexes_in_one_month_get_sp1_and_sp2():
+    """同じ月の別冊は 1 ファイル＝1 号で、URL の順に _sp1・_sp2（c106 の採番と m13 の検査が同じ規則）。"""
+    cats = [cat("201502", n_pages=3), cat("201502", annex=True, n_pages=2, name="b2"), cat("201502", annex=True, n_pages=2, name="b1")]
+    issues, files = extract_rows(cats)
+    assert {i["issue_id"] for i in issues} == {"tatsugo_koho_201502", "tatsugo_koho_201502_sp1", "tatsugo_koho_201502_sp2"}
+    by_name = {f["local_path"].rsplit("/", 1)[-1]: f["doc_id"] for f in files}
+    assert by_name["b1.pdf"] == "tatsugo_koho_201502_sp1" and by_name["b2.pdf"] == "tatsugo_koho_201502_sp2"
+    m13.from_extract(issues, files)  # 規則どおりなので通る
+
+
+def test_from_extract_rejects_rule_violations(catalog):
+    issues, files = extract_rows(catalog)
+    bad = [{**f, "doc_id": "tatsugo_koho_201808_p9"} if f["doc_id"] == "tatsugo_koho_201808_p2" else f for f in files]
+    with pytest.raises(m13.M13Error, match="doc_id が規則"):
+        m13.from_extract(issues, bad)
+    bad = [{**f, "page_offset": 99} if f["doc_id"] == "tatsugo_koho_201808_p2" else f for f in files]
+    with pytest.raises(m13.M13Error, match="page_offset"):
+        m13.from_extract(issues, bad)
+    with pytest.raises(m13.M13Error, match="part_no"):
+        m13.from_extract(issues, [{**f, "part_no": 1} if f["doc_id"] == "tatsugo_koho_201808_p2" else f for f in files])
+
+
+def test_unfetched_files_drop_the_issue_with_allow_partial_and_stop_otherwise(catalog):
+    arts = [a for a in arts_for(catalog) if "201808" not in a["doc_id"]]  # 未取得の号の記事は無い
+    m = build(catalog, arts, unfetched={"b.pdf"})  # 201808 の後半が未取得 → 号ごと除く
+    assert "tatsugo_koho_201808" not in {i["issue_id"] for i in m["issues"]}
+    assert len(m["issues"]) == 4
+    issues, files = extract_rows(catalog, unfetched={"b.pdf"})
+    assert [i["n_pages"] for i in issues if i["issue_id"] == "tatsugo_koho_201808"] == [None]
+    with pytest.raises(m13.M13Error, match="未取得"):
+        m13.from_extract(issues, files)  # allow_partial なし
 
 
 def test_issues_merged_annex_split_and_offsets(catalog):
@@ -141,8 +180,7 @@ def test_article_id_is_stable_for_same_file_page_title(catalog):
 
 
 def test_untitled_and_collision(catalog):
-    files = m13.assign_ids(catalog)
-    d = files[0]["doc_id"]
+    d = files_of(catalog)[0]["doc_id"]
     arts = arts_for(catalog)
     arts.append(art(d, 1, title=None, body=None, unreadable_reason="ocr_low_confidence", topics=()))
     arts[-1]["kind"] = "unsegmented"
@@ -156,7 +194,7 @@ def test_untitled_and_collision(catalog):
 def test_validation_errors(catalog):
     base = arts_for(catalog)
     d = base[0]["doc_id"]
-    with pytest.raises(m13.M13Error, match="catalog.jsonl に無い"):
+    with pytest.raises(m13.M13Error, match="files.jsonl に無い"):
         build(catalog, base + [art("tatsugo_koho_209912", 1)])
     with pytest.raises(m13.M13Error, match="ページ範囲"):
         build(catalog, base + [art(d, 3, 99, title="x")])
@@ -292,17 +330,19 @@ def test_main_end_to_end_on_a_copy(tmp_path, cells, catalog, capsys):
     proc = tmp_path / "proc"
     proc.mkdir()
     catalog = [{**r, "headlines": []} for r in catalog]  # 見出しの突合は専用のテストで見る
-    (proc / "catalog.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in catalog), encoding="utf-8")
-    (proc / "articles.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in arts_for(catalog)), encoding="utf-8")
+    issues, files = extract_rows(catalog)
+    c106.write_jsonl(proc / "issues.jsonl", issues)
+    c106.write_jsonl(proc / "files.jsonl", files)
+    c106.write_jsonl(proc / "articles.jsonl", arts_for(catalog))
     path = cells.execute("PRAGMA database_list").fetchone()[2]
     cells.close()
-    m13.main(["--processed-dir", str(proc), "--cells", path, "--allow-partial"])
+    m13.main(["--raw-dir", str(proc), "--cells", path, "--allow-partial"])
     out = capsys.readouterr().out
     assert "号 5（月刊 4・別冊 1）・ファイル 6" in out
     c = sqlite3.connect(path)
     assert c.execute("SELECT count(*) FROM document_articles WHERE source_id = ?", (m13.SOURCE_ID,)).fetchone()[0] == 14
     c.close()
-    m13.main(["--processed-dir", str(proc), "--dry-run", "--allow-partial"])
+    m13.main(["--raw-dir", str(proc), "--dry-run", "--allow-partial"])
 
 
 # ---------------------------------------------------------------- 語彙・DDL

@@ -149,3 +149,24 @@ def test_footer_list_after_last_pdf_is_not_headlines():
     rows = c.parse_page('''<h3>10月号（9月30日発行）</h3><p><a href="/a/b.pdf">2026年10月号（PDF：1KB）</a></p>
 <div><ul><li>このサイトについて</li></ul></div>''', "https://e.invalid/koho/koho2026.html")
     assert rows[0]["headlines"] == []
+
+
+def test_parse_page_survives_div_inside_li():
+    """主な記事の li の中に div があると、_last が外れて以前は TypeError で落ちた（Issue #131 レビュー）。"""
+    html = ('<h3>11月号（10月28日発行）</h3><a href="a.pdf">2026年11月号（PDF：1KB）</a>'
+            '<ul><li>相撲大会</li><li><div>リンク集</div></li><li>駅伝</li></ul>')
+    rows = c.parse_page(html, "https://x.invalid/koho2026.html")
+    assert len(rows) == 1 and rows[0]["headlines"][0] == "相撲大会"
+
+
+def test_is_footer_keeps_vertical_heading_column_at_the_right_edge():
+    """右端の短いブロックは、本文以下の大きさの細い帯（柱・タブ）だけ落とす。大きい縦書きの見出し列は残す。"""
+    tab = blk("レポート", 480, 300, 495, 340, size=9, vertical=True)
+    head = blk("相撲大会", 470, 100, 495, 160, size=16, vertical=True)
+    assert s.is_footer(tab, 500, 700, 11.0)
+    assert not s.is_footer(head, 500, 700, 11.0)
+
+
+def test_reconcile_does_not_count_headlines_that_normalize_to_empty():
+    r = s.reconcile_issue(["［表紙］", "相撲大会"], [{"kind": "article", "title": "相撲大会", "body_text": "本文"}])
+    assert r["headlines"] == 1 and r["matched"] == ["相撲大会"]
